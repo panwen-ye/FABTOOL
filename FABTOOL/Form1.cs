@@ -1,4 +1,6 @@
 using Newtonsoft.Json;
+using System.Diagnostics;
+using System.Diagnostics.Eventing.Reader;
 using System.Net;
 
 namespace FABTOOL
@@ -54,8 +56,8 @@ namespace FABTOOL
                 MessageBox.Show("startStr can't be empty !");
             }
 
-
-
+            DateTime dt1 = Convert.ToDateTime(startStr);
+            bool flag = ItemCheckedEventArgs(dt1);
 
             FabInfo fabInfo = new FabInfo();
 
@@ -81,7 +83,7 @@ namespace FABTOOL
             List<FileTimeInfo> list2 = new List<FileTimeInfo>();
             foreach (FileTimeInfo fileTimeInfo in list1)
             {
-                DateTime dt1 = Convert.ToDateTime(startStr);
+               
                 // file last modify time > start time
                 if (DateTime.Compare(dt1, fileTimeInfo.LastWriteTime) < 0)
                     list2.Add(fileTimeInfo);
@@ -109,7 +111,32 @@ namespace FABTOOL
             MessageBox.Show("file write over");
         }
 
-        
+
+        private bool ItemCheckedEventArgs(DateTime startD ) {
+            string eventID = "207";
+            string LogSource = "Microsoft-Windows-StorageSpaces-Driver/Operational";
+            /*string sQuery = "*[System/EventID=" + eventID + "]";*/
+            
+
+            string sQuery = string.Format("*[System/EventID=" + eventID + "] and *[System[TimeCreated[@SystemTime >= '{0}']]]",
+            startD.ToUniversalTime().ToString("o"));
+
+            var elQuery = new EventLogQuery(LogSource, PathType.LogName, sQuery);
+            var elReader = new System.Diagnostics.Eventing.Reader.EventLogReader(elQuery);
+
+            List<EventRecord> eventList = new List<EventRecord>();
+            for (EventRecord eventInstance = elReader.ReadEvent();
+                null != eventInstance; eventInstance = elReader.ReadEvent())
+            {
+                //Access event properties here:
+                //eventInstance.LogName;
+                //eventInstance.ProviderName;
+                eventList.Add(eventInstance);
+            }
+            return false;
+        }
+
+
 
         private List<String> getDirvers() {
             List<String> list = new List<string>();
