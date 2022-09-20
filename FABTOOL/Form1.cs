@@ -1,3 +1,4 @@
+using Microsoft.Win32;
 using Newtonsoft.Json;
 using System.Diagnostics;
 using System.Diagnostics.Eventing.Reader;
@@ -18,7 +19,8 @@ namespace FABTOOL
             dateTimePicker1.MaxDate = DateTime.Now;
         }
 
-        public class FabInfo {
+        public class TaskInfo
+        {
             public string? CoputerName;
             public string? UserId;
             public string? TaskTime;
@@ -39,107 +41,165 @@ namespace FABTOOL
 
 
 
+
+        private bool InputCheck(string name, string userId, string startStr)
+        {
+
+            if (string.IsNullOrEmpty(name))
+            {
+                MessageBox.Show("Name can't be empty !");
+                return false;
+            }
+            if (string.IsNullOrEmpty(userId))
+            {
+                MessageBox.Show("EmpId can't be empty !");
+                return false;
+            }
+            userId = userId.Trim().ToUpper();
+            if (!userId.StartsWith('E') && !userId.StartsWith('L'))
+            {
+                MessageBox.Show("EmpId invalid !");
+                return false;
+            }
+            if (string.IsNullOrEmpty(startStr))
+            {
+                MessageBox.Show("StartDate can't be empty !");
+                return false;
+            }
+
+
+            return true;
+
+        }
+
         private void button1_Click(object sender, EventArgs e)
         {
             String name = textBox1.Text;
             String userId = textBox2.Text;
-            String startStr = dateTimePicker1.Text;
-            if (string.IsNullOrEmpty(name) ) {
-                MessageBox.Show("name can't be empty !");
+            String startDateStr = dateTimePicker1.Text;
+            bool flag = InputCheck(name, userId, startDateStr);
+            if (!flag) {
+                return;
             }
-            if (string.IsNullOrEmpty(userId))
+            DateTime startDate = Convert.ToDateTime(startDateStr);
+
+            // get usbstror info
+            string result = GetUsbStor();
+
+
+            // get file modified
+            List<string> list = GetFileModified(startDate);
+
+            TaskInfo taskInfo = new()
             {
-                MessageBox.Show("empId can't be empty !");
-            }
-            if (string.IsNullOrEmpty(startStr))
-            {
-                MessageBox.Show("startStr can't be empty !");
-            }
+                CoputerName = Dns.GetHostName(),
+                TaskTime = startDateStr,
+                UserId = userId,
 
-            DateTime dt1 = Convert.ToDateTime(startStr);
-            bool flag = ItemCheckedEventArgs(dt1);
-
-            FabInfo fabInfo = new FabInfo();
-
-            fabInfo.CoputerName = Dns.GetHostName();
-            fabInfo.TaskTime = startStr;
-            fabInfo.UserId = userId;
-
-
-
-            List<String> dirvers = getDirvers();
-            
-            string[] exts = new string[] { };
-            /*string[] exts = new string[] {".TXT" , ".DOC" , ".EXE" };*/
-
-            List<FileTimeInfo> list1 = new List<FileTimeInfo>();
-
-            
-            foreach (String dir in dirvers) {
-                List< FileTimeInfo> a =  GetLatestFileTimeInfo(dir, exts);
-                list1.AddRange(a);
             };
-
-            List<FileTimeInfo> list2 = new List<FileTimeInfo>();
-            foreach (FileTimeInfo fileTimeInfo in list1)
-            {
-               
-                // file last modify time > start time
-                if (DateTime.Compare(dt1, fileTimeInfo.LastWriteTime) < 0)
-                    list2.Add(fileTimeInfo);
-            }
-            fabInfo.Infos = list2;
-
-
-            string jsondata = JsonConvert.SerializeObject(fabInfo);  //class类转string
-            using (StreamWriter sw = new StreamWriter(@"FabTool.json"))  //将string 写入json文件
-            {
-                sw.WriteLine(jsondata);
-            }
-
-            using StreamWriter file = new(@"FabTool1.txt", false);
-            file.WriteLine("name : " + fabInfo.UserId);
-            file.WriteLine("computername : " + fabInfo.CoputerName);
-            file.WriteLine("taskTime : " + fabInfo.TaskTime);
-            foreach (FileTimeInfo line in fabInfo.Infos)
-            {
-
-                file.WriteLine(JsonConvert.SerializeObject(line));
-            }
-
-
             MessageBox.Show("file write over");
         }
 
+        private string GetUsbStor()
+        {
+        
 
-        private bool ItemCheckedEventArgs(DateTime startD ) {
-            string eventID = "207";
-            string LogSource = "Microsoft-Windows-StorageSpaces-Driver/Operational";
-            /*string sQuery = "*[System/EventID=" + eventID + "]";*/
+            List<UsbStorInfo> list = new();
             
-
-            string sQuery = string.Format("*[System/EventID=" + eventID + "] and *[System[TimeCreated[@SystemTime >= '{0}']]]",
-            startD.ToUniversalTime().ToString("o"));
-
-            var elQuery = new EventLogQuery(LogSource, PathType.LogName, sQuery);
-            var elReader = new System.Diagnostics.Eventing.Reader.EventLogReader(elQuery);
-
-            List<EventRecord> eventList = new List<EventRecord>();
-            for (EventRecord eventInstance = elReader.ReadEvent();
-                null != eventInstance; eventInstance = elReader.ReadEvent())
+            RegistryKey USBKey = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Enum\USBSTOR", false);
+            string param = "";
+            foreach (string sub1 in USBKey.GetSubKeyNames())
             {
-                //Access event properties here:
-                //eventInstance.LogName;
-                //eventInstance.ProviderName;
-                eventList.Add(eventInstance);
+                RegistryKey sub1key = USBKey.OpenSubKey(sub1, false);
+                foreach (string sub2 in sub1key.GetSubKeyNames())
+                {
+                    try
+                    {
+
+                        RegistryKey sub2key = sub1key.OpenSubKey(sub2, false);
+
+                        if (sub2key.GetValue("Service", "").Equals("disk"))
+                        {
+                            UsbStorInfo usbStorInfo = new UsbStorInfo();
+                            String Path = "USBSTOR" + "\\" + sub1 + "\\" + sub2;
+                            String Name = (string)sub2key.GetValue("FriendlyName", "");
+                            usbStorInfo.Name = Name;
+                            usbStorInfo.Uid = sub2;
+                            usbStorInfo.path = Path;
+
+                            list.Add(usbStorInfo);
+                            param += Path;
+                            param += ",";
+                        }
+                    }
+                    catch (Exception msg) //异常处理
+                    {
+                        MessageBox.Show(msg.Message);
+                    }
+                }
+
             }
-            return false;
+            if (list.Count == 0) {
+                return "";
+            }
+
+
+            return ExecuteExe(param);
         }
 
 
+        private string ExecuteExe(string param) {
 
-        private List<String> getDirvers() {
-            List<String> list = new List<string>();
+            string result = "";
+
+            object output;
+            try
+            {
+                using (Process p = new Process())
+                {
+                    p.StartInfo.FileName = @"D:\python\USB\dist\USBUsedTime.exe";//可执行程序路径
+                    p.StartInfo.Arguments = param;//参数以空格分隔，如果某个参数为空，可以传入""
+                    p.StartInfo.UseShellExecute = false;//是否使用操作系统shell启动
+                    p.StartInfo.CreateNoWindow = true;//不显示程序窗口
+                    p.StartInfo.RedirectStandardOutput = true;//由调用程序获取输出信息
+                    p.StartInfo.RedirectStandardInput = true;   //接受来自调用程序的输入信息
+                    p.StartInfo.RedirectStandardError = true;   //重定向标准错误输出
+                    p.Start();
+                    p.WaitForExit();
+                    //正常运行结束放回代码为0
+                    if (p.ExitCode != 0)
+                    {
+                        output = p.StandardError.ReadToEnd();
+                        output = output.ToString().Replace(System.Environment.NewLine, string.Empty);
+                        output = output.ToString().Replace("\n", string.Empty);
+                        throw new Exception(output.ToString());
+                    }
+                    else
+                    {
+                        output = p.StandardOutput.ReadToEnd();
+                        result = output.ToString();
+                    }
+                }
+                Console.WriteLine(output);
+            }
+            catch (Exception ee)
+            {
+                Console.WriteLine(ee.Message);
+            }
+            return result;
+
+        }
+
+
+        class UsbStorInfo {
+            public string? Name;
+            public string? Uid;
+            public string? path;
+        }
+
+        private List<String> GetDrivers()
+        {
+            List<String> list = new ();
             var drivers = DriveInfo.GetDrives();
             foreach (var driver in drivers)
             {
@@ -150,52 +210,23 @@ namespace FABTOOL
 
         }
 
-
-       
-
-        //获取最近创建的文件名和创建时间
-        //如果没有指定类型的文件，返回null
-        static List<FileTimeInfo> GetLatestFileTimeInfo(string dir, string[] exts)
-        {
-            List<FileTimeInfo> list = new List<FileTimeInfo>();
-            DirectoryInfo root = new DirectoryInfo(dir);
-
-            foreach (FileInfo fi in root.GetFiles())
-            {
-                if (exts.Length != 0)
-                {
-                    if (exts.Contains(fi.Extension.ToUpper()))
-                    {
-                        list.Add(new FileTimeInfo()
-                        {
-                            FileName = fi.FullName,
-                            FileCreateTime = fi.CreationTime,
-                            LastWriteTime = fi.LastWriteTime,
-                            LastAccessTime = fi.LastAccessTime
-                        });
-
-                    }
-
+        // get file list where modified between startDate and now
+        private List<string> GetFileModified(DateTime startDate) {
+            List<string> list = new();
+            List<String> dirvers = GetDrivers();
+            foreach (string driver in dirvers) {
+                var directory = new DirectoryInfo(driver);                
+                DateTime to_date = DateTime.Now;
+                var files = directory.GetFiles()
+                  .Where(file => file.LastWriteTime >= startDate && file.LastWriteTime <= to_date);
+                foreach (var file in files) {
+                    list.Add(file.Name);
                 }
-                else {
-                    list.Add(new FileTimeInfo()
-                    {
-                        FileName = fi.FullName,
-                        DirectoryName =fi.DirectoryName,
-                        FileCreateTime = fi.CreationTime,
-                        LastWriteTime = fi.LastWriteTime,
-                        LastAccessTime = fi.LastAccessTime
-                    });
-
-
-                }
-
-
-                 
             }
-   
             return list;
+            
         }
+
 
 
         private void label1_Click(object sender, EventArgs e)
@@ -215,12 +246,12 @@ namespace FABTOOL
 
         private void dateTimeChoser1_Load(object sender, EventArgs e)
         {
-            
+
         }
 
         private void dateTimePicker2_ValueChanged(object sender, EventArgs e)
         {
-         
+
 
         }
 
