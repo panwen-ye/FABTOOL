@@ -22,10 +22,14 @@ namespace FABTOOL
         public class TaskInfo
         {
             public string? CoputerName;
-            public string? UserId;
+            public string? Operator;
+            public string? Host;
             public string? TaskTime;
+            public string? StartTime;
+            public string? EndTime;
+            public string? Result;
 
-            public List<FileTimeInfo>? Infos;
+            
         }
 
         //自定义一个类
@@ -72,35 +76,114 @@ namespace FABTOOL
 
         }
 
+        private List<EventRecord> ItemCheckedEventArgs(DateTime startD , DateTime endD)
+        {
+            string eventID = "207";
+            string LogSource = "Microsoft-Windows-StorageSpaces-Driver/Operational";
+            /*string sQuery = "*[System/EventID=" + eventID + "]";*/
+
+
+            string sQuery = string.Format("*[System/EventID=" + eventID + "]" +
+                " and *[System[TimeCreated[@SystemTime >= '{0}'and @SystemTime <= '{1}']]] ",
+            startD.ToUniversalTime().ToString("o"),
+            endD.ToUniversalTime().ToString("o")
+            );
+
+            var elQuery = new EventLogQuery(LogSource, PathType.LogName, sQuery);
+            var elReader = new System.Diagnostics.Eventing.Reader.EventLogReader(elQuery);
+
+            List<EventRecord> eventList = new List<EventRecord>();
+            for (EventRecord eventInstance = elReader.ReadEvent();
+                null != eventInstance; eventInstance = elReader.ReadEvent())
+            {
+                //Access event properties here:
+                //eventInstance.LogName;
+                //eventInstance.ProviderName;
+                eventList.Add(eventInstance);
+            }
+            return eventList;
+        }
+
         private void button1_Click(object sender, EventArgs e)
         {
             String name = textBox1.Text;
             String userId = textBox2.Text;
             String startDateStr = dateTimePicker1.Text;
+            String endDateStr = dateTimePicker2.Text;
             bool flag = InputCheck(name, userId, startDateStr);
             if (!flag) {
                 return;
             }
             DateTime startDate = Convert.ToDateTime(startDateStr);
+            DateTime endDate = Convert.ToDateTime(endDateStr);
 
             // get usbstror info
-            string result = GetUsbStor();
+            // string result = GetUsbStor(startDate, endDate);
+
+
+            // write result into log
+            List < EventRecord > list = ItemCheckedEventArgs(startDate, endDate);
+            string result = "Pass";
+            if (list != null && list.Count != 0)
+            {                
+                result = "Fail";
+            }
+            
+            textBox3.Text = result;
+
+
 
 
             // get file modified
-            List<string> list = GetFileModified(startDate);
+            List<FileInfo> list1 = GetFileModified(startDate , endDate);
 
             TaskInfo taskInfo = new()
             {
                 CoputerName = Dns.GetHostName(),
-                TaskTime = startDateStr,
-                UserId = userId,
+                TaskTime = System.DateTime.Now.ToString("yyyyMMddHHmmss"),
+                StartTime = startDateStr,
+                EndTime = endDateStr,
+                Host = userId,
+                Operator = name,
+                Result = result, 
 
             };
-            MessageBox.Show("file write over");
+            string directory = taskInfo.CoputerName + taskInfo.TaskTime;
+   
+            System.IO.DirectoryInfo di = new System.IO.DirectoryInfo(System.Environment.CurrentDirectory + "/" + directory);
+            di.Create();
+            using (StreamWriter sw = new StreamWriter(directory+"/result.txt"))
+            {
+                string info = JsonConvert.SerializeObject(taskInfo);
+                sw.WriteLine(info);
+            }
+            if (list1 != null && list1.Count != 0) {
+                using (StreamWriter sw = new StreamWriter(directory + "/moidifyFile.txt"))
+                {
+                    foreach (FileInfo s in list1)
+                    {
+                        FileInfoT fileInfoT = new FileInfoT() {
+                            FullPath = s.FullName,
+                            LastWirteTime = s.LastWriteTime.ToString("G"),
+                        };
+
+                        string info = JsonConvert.SerializeObject(fileInfoT);
+                        sw.WriteLine(info);
+
+                    }
+  
+                }
+
+            }
+            MessageBox.Show("Task Over");
         }
 
-        private string GetUsbStor()
+        class FileInfoT {
+            public string? FullPath;  //文件名3
+            public string? LastWirteTime;
+        }
+
+        private string GetUsbStor(DateTime startDate , DateTime endDate)
         {
         
 
@@ -144,21 +227,28 @@ namespace FABTOOL
             }
 
 
-            return ExecuteExe(param);
+            return ExecuteExe(param , startDate , endDate);
         }
 
+        public static long GetTimeStamp(DateTime date)
 
-        private string ExecuteExe(string param) {
+        {
+            DateTime DateTime1970 = new DateTime(1970, 1, 1).ToLocalTime();
+            return (long)(date.ToLocalTime() - DateTime1970).TotalSeconds;
+        }
 
+        private string ExecuteExe(string param , DateTime startDate, DateTime endDate) {
+            
             string result = "";
-
+            long startDate1 = GetTimeStamp(startDate);
+            long endDate1 = GetTimeStamp(endDate);
             object output;
             try
             {
                 using (Process p = new Process())
                 {
                     p.StartInfo.FileName = @"D:\python\USB\dist\USBUsedTime.exe";//可执行程序路径
-                    p.StartInfo.Arguments = param;//参数以空格分隔，如果某个参数为空，可以传入""
+                    p.StartInfo.Arguments = param + " " + startDate1 + " " + endDate1;//参数以空格分隔，如果某个参数为空，可以传入""
                     p.StartInfo.UseShellExecute = false;//是否使用操作系统shell启动
                     p.StartInfo.CreateNoWindow = true;//不显示程序窗口
                     p.StartInfo.RedirectStandardOutput = true;//由调用程序获取输出信息
@@ -211,16 +301,16 @@ namespace FABTOOL
         }
 
         // get file list where modified between startDate and now
-        private List<string> GetFileModified(DateTime startDate) {
-            List<string> list = new();
+        private List<FileInfo> GetFileModified(DateTime startDate ,DateTime endDate) {
+            List<FileInfo> list = new();
             List<String> dirvers = GetDrivers();
             foreach (string driver in dirvers) {
                 var directory = new DirectoryInfo(driver);                
-                DateTime to_date = DateTime.Now;
+                
                 var files = directory.GetFiles()
-                  .Where(file => file.LastWriteTime >= startDate && file.LastWriteTime <= to_date);
+                  .Where(file => file.LastWriteTime >= startDate && file.LastWriteTime <= endDate);
                 foreach (var file in files) {
-                    list.Add(file.Name);
+                    list.Add(file);
                 }
             }
             return list;
@@ -256,6 +346,11 @@ namespace FABTOOL
         }
 
         private void textBox1_TextChanged(object sender, EventArgs e)
+        {
+
+        }
+
+        private void label1_Click_1(object sender, EventArgs e)
         {
 
         }
