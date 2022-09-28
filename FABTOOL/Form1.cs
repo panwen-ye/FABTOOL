@@ -106,6 +106,12 @@ namespace FABTOOL
 
         private void button1_Click(object sender, EventArgs e)
         {
+            List<string> displayNameList = new List<string>();
+            displayNameList = RegisterTableUnitity.Get64BitRegistryKey("HKEY_LOCAL_MACHINE", @"SYSTEM\CurrentControlSet\Enum\USBSTOR\Disk&Ven_USB&Prod_Flash_Disk&Rev_2.00", "1240821123395675129&0");//uninstallNode.GetValue("DisplayName");
+
+            if (true) {
+                return;
+                    }
             String name = textBox1.Text;
             String userId = textBox2.Text;
             String startDateStr = dateTimePicker1.Text;
@@ -118,7 +124,7 @@ namespace FABTOOL
             DateTime endDate = Convert.ToDateTime(endDateStr);
 
             // get usbstror info
-            // string result = GetUsbStor(startDate, endDate);
+            string result1 = GetUsbStor(startDate, endDate);
 
 
             // write result into log
@@ -200,7 +206,7 @@ namespace FABTOOL
                     {
 
                         RegistryKey sub2key = sub1key.OpenSubKey(sub2, false);
-
+                        
                         if (sub2key.GetValue("Service", "").Equals("disk"))
                         {
                             UsbStorInfo usbStorInfo = new UsbStorInfo();
@@ -215,6 +221,7 @@ namespace FABTOOL
                             param += ",";
                         }
                     }
+                    
                     catch (Exception msg) //“Ï≥£¥¶¿Ì
                     {
                         MessageBox.Show(msg.Message);
