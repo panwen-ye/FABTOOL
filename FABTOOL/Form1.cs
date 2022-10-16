@@ -367,18 +367,57 @@ namespace FABTOOL
 
         }
 
+        // <summary>
+        // 递归获取某一目录下的所有目录
+        // </summary>
+        // <param name="path">目录路径</param>
+        // <param name="isTiGui">是否递归获取</param>
+        // <returns>所有目录</returns>            
+        public static List<string> GetAllDirectoriesFromPath(string path, bool isTiGui = true )
+        {
+            
+            List<string> dirs = new List<string>();
+            dirs.Add(path);
+            try {
+                string[] tempdirs = Directory.GetDirectories(path);//得到子目录
+                if (isTiGui)
+                    foreach (var str in tempdirs)
+                        dirs.AddRange(GetAllDirectoriesFromPath(str, isTiGui));
+                dirs.AddRange(tempdirs);
+            }
+            catch (Exception e) { 
+            
+            }
+            
+            return dirs;
+        }
         // get file list where modified between startDate and now
         private List<FileInfo> GetFileModified(DateTime startDate ,DateTime endDate) {
             List<FileInfo> list = new();
             List<String> dirvers = GetDrivers();
+
+            string path1111 = @"C:\Users\Admin";
+
             foreach (string driver in dirvers) {
-                var directory = new DirectoryInfo(driver);                
-                
-                var files = directory.GetFiles()
-                  .Where(file => file.LastWriteTime >= startDate && file.LastWriteTime <= endDate);
-                foreach (var file in files) {
-                    list.Add(file);
+                List<string> list2 = GetAllDirectoriesFromPath(driver);
+                foreach (string dir1 in list2)
+                {
+                    var directory = new DirectoryInfo(dir1);
+                    try
+                    {
+                        var files = directory.GetFiles()
+                      .Where(file => file.LastWriteTime >= startDate && file.LastWriteTime <= endDate);
+                        foreach (var file in files)
+                        {
+                            list.Add(file);
+                        }
+                    }
+                    catch (Exception e) { 
+                    
+                    }
+ 
                 }
+
             }
             return list;
             
