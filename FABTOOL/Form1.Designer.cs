@@ -42,7 +42,7 @@
             // 
             // button1
             // 
-            this.button1.Location = new System.Drawing.Point(148, 236);
+            this.button1.Location = new System.Drawing.Point(147, 210);
             this.button1.Name = "button1";
             this.button1.Size = new System.Drawing.Size(82, 28);
             this.button1.TabIndex = 0;
@@ -107,6 +107,7 @@
             this.dateTimePicker2.Name = "dateTimePicker2";
             this.dateTimePicker2.Size = new System.Drawing.Size(133, 23);
             this.dateTimePicker2.TabIndex = 7;
+            this.dateTimePicker2.ValueChanged += new System.EventHandler(this.dateTimePicker2_ValueChanged_1);
             // 
             // label1
             // 
@@ -120,9 +121,9 @@
             // 
             // textBox3
             // 
-            this.textBox3.Location = new System.Drawing.Point(133, 159);
+            this.textBox3.Location = new System.Drawing.Point(147, 158);
             this.textBox3.Name = "textBox3";
-            this.textBox3.Size = new System.Drawing.Size(133, 23);
+            this.textBox3.Size = new System.Drawing.Size(82, 23);
             this.textBox3.TabIndex = 9;
             // 
             // Form1

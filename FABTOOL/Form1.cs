@@ -3,6 +3,7 @@ using Newtonsoft.Json;
 using System.Diagnostics;
 using System.Diagnostics.Eventing.Reader;
 using System.Net;
+using static FABTOOL.RegisterTableUnitity;
 
 namespace FABTOOL
 
@@ -46,7 +47,7 @@ namespace FABTOOL
 
 
 
-        private bool InputCheck(string name, string userId, string startStr)
+        private bool InputCheck(string name, string userId, string startStr , string endStr)
         {
 
             if (string.IsNullOrEmpty(name))
@@ -70,8 +71,13 @@ namespace FABTOOL
                 MessageBox.Show("StartDate can't be empty !");
                 return false;
             }
+            if (string.IsNullOrEmpty(endStr))
+            {
+                MessageBox.Show("EndDate can't be empty !");
+                return false;
+            }
 
-
+            
             return true;
 
         }
@@ -81,8 +87,6 @@ namespace FABTOOL
             string eventID = "207";
             string LogSource = "Microsoft-Windows-StorageSpaces-Driver/Operational";
             /*string sQuery = "*[System/EventID=" + eventID + "]";*/
-
-
             string sQuery = string.Format("*[System/EventID=" + eventID + "]" +
                 " and *[System[TimeCreated[@SystemTime >= '{0}'and @SystemTime <= '{1}']]] ",
             startD.ToUniversalTime().ToString("o"),
@@ -103,50 +107,63 @@ namespace FABTOOL
             }
             return eventList;
         }
+         
 
         private void button1_Click(object sender, EventArgs e)
         {
-            List<string> displayNameList = new List<string>();
-            displayNameList = RegisterTableUnitity.Get64BitRegistryKey("HKEY_LOCAL_MACHINE", @"SYSTEM\CurrentControlSet\Enum\USBSTOR\Disk&Ven_USB&Prod_Flash_Disk&Rev_2.00", "1240821123395675129&0");//uninstallNode.GetValue("DisplayName");
-
-            if (true) {
-                return;
-                    }
+            
+           // 解析参数
             String name = textBox1.Text;
             String userId = textBox2.Text;
             String startDateStr = dateTimePicker1.Text;
             String endDateStr = dateTimePicker2.Text;
-            bool flag = InputCheck(name, userId, startDateStr);
+            bool flag = InputCheck(name, userId, startDateStr , endDateStr);
+            
             if (!flag) {
                 return;
             }
             DateTime startDate = Convert.ToDateTime(startDateStr);
-            DateTime endDate = Convert.ToDateTime(endDateStr);
+            DateTime endDateT = Convert.ToDateTime(endDateStr);
+            DateTime endDate = new DateTime(endDateT.Year, endDateT.Month, endDateT.Day, 23, 59, 59);
+            TimeSpan ts = endDate - startDate;	//计算时间差
+            int diff = ts.Days;
+            if (diff > 100 || diff <= 0)
+            {
+                MessageBox.Show("时间间隔不允许超过10天");
+                return;
 
-            // get usbstror info
-            string result1 = GetUsbStor(startDate, endDate);
-
-
-            // write result into log
-            List < EventRecord > list = ItemCheckedEventArgs(startDate, endDate);
-            string result = "Pass";
-            if (list != null && list.Count != 0)
-            {                
-                result = "Fail";
             }
-            
-            textBox3.Text = result;
+            bool Flag = true;
 
+            // get usbstror info from regedit
+            List<UsbStorInfo> result1 = GetUsbStor(startDate, endDate);
+            if (result1 != null && result1.Count != 0) {
+                Flag = false;
+            }
 
-
+            // get usb record from event log
+            List< EventRecord > list = ItemCheckedEventArgs(startDate, endDate);
+            if (list != null && list.Count != 0)
+            {
+                Flag = false;
+            }
 
             // get file modified
-            List<FileInfo> list1 = GetFileModified(startDate , endDate);
+            List<FileInfo> list1 = GetFileModified(startDate, endDate);
+            if (list1 != null && list1.Count != 0) {
+                Flag = false;
+            }
+            string result = "Pass";
+            if (!Flag) {
+                result = "Fail";
+            }
+            textBox3.Text = result;
+
 
             TaskInfo taskInfo = new()
             {
                 CoputerName = Dns.GetHostName(),
-                TaskTime = System.DateTime.Now.ToString("yyyyMMddHHmmss"),
+                TaskTime = DateTime.Now.ToString("yyyyMMddHHmmss"),
                 StartTime = startDateStr,
                 EndTime = endDateStr,
                 Host = userId,
@@ -154,34 +171,97 @@ namespace FABTOOL
                 Result = result, 
 
             };
-            string directory = taskInfo.CoputerName + taskInfo.TaskTime;
-   
-            System.IO.DirectoryInfo di = new System.IO.DirectoryInfo(System.Environment.CurrentDirectory + "/" + directory);
+
+            string directory = taskInfo.CoputerName + taskInfo.TaskTime;            
+            DirectoryInfo di = new System.IO.DirectoryInfo(System.Environment.CurrentDirectory + "/" + directory);            
             di.Create();
-            using (StreamWriter sw = new StreamWriter(directory+"/result.txt"))
-            {
-                string info = JsonConvert.SerializeObject(taskInfo);
-                sw.WriteLine(info);
-            }
-            if (list1 != null && list1.Count != 0) {
-                using (StreamWriter sw = new StreamWriter(directory + "/moidifyFile.txt"))
-                {
-                    foreach (FileInfo s in list1)
-                    {
-                        FileInfoT fileInfoT = new FileInfoT() {
-                            FullPath = s.FullName,
-                            LastWirteTime = s.LastWriteTime.ToString("G"),
-                        };
 
-                        string info = JsonConvert.SerializeObject(fileInfoT);
-                        sw.WriteLine(info);
+            // 设备信息
+            String path = directory + "/result.txt";
+            TaskInfoRecord(path, taskInfo);
 
-                    }
-  
-                }
+            // 注册表信息
+            RegeditInfoRecord(path, result1);
 
-            }
+            // 日志时间信息
+            EventInfoRecord(path , list);
+
+            // 文件修改
+            FileModifyRecord(path, list1);
+
             MessageBox.Show("Task Over");
+        }
+
+        public void FileModifyRecord(String path, List<FileInfo> list)
+        {
+            File.AppendAllText(path, "\r\n" + "# FileModifyInfo");
+            if (list == null || list.Count == 0)
+            {
+                File.AppendAllText(path, "\r\n" + "PASS");
+            }
+            else {
+                foreach (FileInfo s in list)
+                {
+                    FileInfoT fileInfoT = new FileInfoT()
+                    {
+                        FullPath = s.FullName,
+                        LastWirteTime = s.LastWriteTime.ToString("G"),
+                    };
+                    string info = JsonConvert.SerializeObject(fileInfoT);
+                    File.AppendAllText(path, "\r\n" + info);
+                }
+            }
+            
+        }
+
+        public void EventInfoRecord(String path, List<EventRecord> list)
+        {
+            File.AppendAllText(path, "\r\n" + "# EventInfo");
+            if (list == null || list.Count == 0)
+            {
+                File.AppendAllText(path, "\r\n" + "PASS");
+            }
+            else
+            {
+                foreach (EventRecord eventInfo in list)
+                {
+                    string info = JsonConvert.SerializeObject(eventInfo);
+                    File.AppendAllText(path, "\r\n" + info);
+                }
+            }
+            
+        }
+
+        
+
+      public void RegeditInfoRecord(String path, List<UsbStorInfo> list) {
+            File.AppendAllText(path, "\r\n" + "# RegeditInfo");
+            if (list == null || list.Count == 0)
+            {
+                File.AppendAllText(path, "\r\n" + "PASS");
+            }
+            else {
+                foreach (UsbStorInfo usbStorInfo in list)
+                {
+                    string info = JsonConvert.SerializeObject(usbStorInfo);
+                    File.AppendAllText(path, "\r\n" + info);
+                }
+            }
+            
+
+        }
+
+        public void TaskInfoRecord(String path , TaskInfo taskInfo) {
+            
+            File.AppendAllText(path, "\r\n" + "# TaskInfo");
+            File.AppendAllText(path, "\r\n" + "CoputerName" + taskInfo.CoputerName);
+            File.AppendAllText(path, "\r\n" + "TaskTime" + taskInfo.TaskTime);
+            File.AppendAllText(path, "\r\n" + "StartTime" + taskInfo.StartTime);
+            File.AppendAllText(path, "\r\n" + "EndTime" + taskInfo.EndTime);
+            File.AppendAllText(path, "\r\n" + "Host" + taskInfo.Host);
+            File.AppendAllText(path, "\r\n" + "Operator" + taskInfo.Operator);
+            File.AppendAllText(path, "\r\n" + "Result" + taskInfo.Result);
+            
         }
 
         class FileInfoT {
@@ -189,52 +269,30 @@ namespace FABTOOL
             public string? LastWirteTime;
         }
 
-        private string GetUsbStor(DateTime startDate , DateTime endDate)
+        private List<UsbStorInfo> GetUsbStor(DateTime startDate , DateTime endDate)
         {
-        
-
             List<UsbStorInfo> list = new();
-            
-            RegistryKey USBKey = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Enum\USBSTOR", false);
-            string param = "";
-            foreach (string sub1 in USBKey.GetSubKeyNames())
-            {
-                RegistryKey sub1key = USBKey.OpenSubKey(sub1, false);
-                foreach (string sub2 in sub1key.GetSubKeyNames())
+            String parentPath = @"SYSTEM\CurrentControlSet\Enum\USBSTOR";
+            RegistryKey USBKey = Registry.LocalMachine.OpenSubKey(parentPath, false);
+            if (USBKey != null) {
+
+                foreach (string sub1 in USBKey.GetSubKeyNames())
                 {
-                    try
-                    {
-
-                        RegistryKey sub2key = sub1key.OpenSubKey(sub2, false);
-                        
-                        if (sub2key.GetValue("Service", "").Equals("disk"))
-                        {
-                            UsbStorInfo usbStorInfo = new UsbStorInfo();
-                            String Path = "USBSTOR" + "\\" + sub1 + "\\" + sub2;
-                            String Name = (string)sub2key.GetValue("FriendlyName", "");
-                            usbStorInfo.Name = Name;
-                            usbStorInfo.Uid = sub2;
-                            usbStorInfo.path = Path;
-
-                            list.Add(usbStorInfo);
-                            param += Path;
-                            param += ",";
+                    List<RegistryKeyInfo> list1 = RegisterTableUnitity.GetRegistryKeyLastWritetime("HKEY_LOCAL_MACHINE", parentPath + @"\" + sub1);
+                    foreach (RegistryKeyInfo re in list1) {
+                        DateTime lastWriteTime = re.LastWriteTime;
+                        if (lastWriteTime >= startDate && lastWriteTime <= endDate) {
+                            UsbStorInfo usbStorinfo = new UsbStorInfo();
+                            usbStorinfo.path = re.KeyPath;
+                            usbStorinfo.Uid = sub1;
+                            usbStorinfo.LastWriteTime = re.LastWriteTime;
+                            list.Add(usbStorinfo);
                         }
                     }
                     
-                    catch (Exception msg) //异常处理
-                    {
-                        MessageBox.Show(msg.Message);
-                    }
                 }
-
             }
-            if (list.Count == 0) {
-                return "";
-            }
-
-
-            return ExecuteExe(param , startDate , endDate);
+            return list;
         }
 
         public static long GetTimeStamp(DateTime date)
@@ -288,10 +346,12 @@ namespace FABTOOL
         }
 
 
-        class UsbStorInfo {
-            public string? Name;
-            public string? Uid;
-            public string? path;
+        public class UsbStorInfo {
+            public String Name;
+            public String Uid;
+            public String path;
+
+            public DateTime LastWriteTime;
         }
 
         private List<String> GetDrivers()
@@ -359,6 +419,12 @@ namespace FABTOOL
 
         private void label1_Click_1(object sender, EventArgs e)
         {
+
+        }
+
+        private void dateTimePicker2_ValueChanged_1(object sender, EventArgs e)
+        {
+            
 
         }
     }

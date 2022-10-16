@@ -1,11 +1,5 @@
-﻿using Microsoft.Win32;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Security.Permissions;
+﻿using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace FABTOOL
 {
@@ -123,6 +117,66 @@ namespace FABTOOL
             TimeSpan toNow = new TimeSpan(lTime);
             DateTime targetDt = dtStart.Add(toNow);
             return targetDt;
+        }
+
+        public class RegistryKeyInfo
+        {
+            public  string KeyPath;
+            public  DateTime LastWriteTime;
+        }
+
+        public static List<RegistryKeyInfo> GetRegistryKeyLastWritetime(string parentKeyName, string subKeyName )
+        {         
+            try
+            {
+                //将Windows注册表主键名转化成为不带正负号的整形句柄（与平台是32或者64位有关）
+                UIntPtr hKey = TransferKeyName(parentKeyName);
+                uint resultSize = 1024;
+                uint lpType = 0;
+                //关闭文件系统转向 
+                IntPtr oldWOW64State = new IntPtr();
+                List<RegistryKeyInfo> list = new List<RegistryKeyInfo>();
+                {
+                    RegResult regResult;
+                    IntPtr lpSecurityAttributes = IntPtr.Zero;
+                    //获得操作Key值的句柄
+                    UIntPtr hKeyEx = UIntPtr.Zero;
+                    int r = RegCreateKeyEx(hKey, subKeyName, IntPtr.Zero, null, RegOption.NonVolatile, RegSAM.EnumerateSubKeys | RegSAM.WOW64_64Key, ref lpSecurityAttributes, out hKeyEx, out regResult);
+
+                    StringBuilder subsubKeyName = new StringBuilder();
+                    uint i = 0;
+                    long lastWriteTime;
+                    while (true)
+                    {
+                        uint cbMaxSubKey = 100; //键名的长度
+                        int reke = RegEnumKeyEx(hKeyEx, i, subsubKeyName, ref cbMaxSubKey, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, out lastWriteTime);
+                       
+                        if (reke == 0)
+                        {
+                            i++;
+                            DateTime dte = GetDateTime(lastWriteTime);
+                            RegistryKeyInfo tmp = new RegistryKeyInfo();
+                            tmp.KeyPath = parentKeyName + subKeyName + subsubKeyName;
+                            tmp.LastWriteTime = dte;
+                            list.Add(tmp);
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                }
+
+                //打开文件系统转向
+                //Wow64RevertWow64FsRedirection(oldWOW64State);
+
+                //返回Key值
+                return list;
+            }
+            catch (Exception ex)
+            {
+                return null;
+            }
         }
 
         public static List<string> Get64BitRegistryKey(string parentKeyName, string subKeyName, string keyName)
