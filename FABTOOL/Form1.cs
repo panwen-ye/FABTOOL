@@ -1,9 +1,11 @@
 using Microsoft.Win32;
 using Newtonsoft.Json;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.Eventing.Reader;
 using System.Net;
 using static FABTOOL.RegisterTableUnitity;
+using System.Threading;//引用空间名称
 
 namespace FABTOOL
 
@@ -13,6 +15,7 @@ namespace FABTOOL
         public Form1()
         {
             InitializeComponent();
+            System.Windows.Forms.Control.CheckForIllegalCrossThreadCalls = false;
         }
 
         private void Form1_Load(object sender, EventArgs e)
@@ -111,15 +114,21 @@ namespace FABTOOL
 
         private void button1_Click(object sender, EventArgs e)
         {
-            
-           // 解析参数
+            Thread fThread = new Thread(new ThreadStart(DoScanTask1));
+            fThread.Start();
+
+        }
+
+        public void DoScanTask1() {
+            // 解析参数
             String name = textBox1.Text;
             String userId = textBox2.Text;
             String startDateStr = dateTimePicker1.Text;
             String endDateStr = dateTimePicker2.Text;
-            bool flag = InputCheck(name, userId, startDateStr , endDateStr);
-            
-            if (!flag) {
+            bool flag = InputCheck(name, userId, startDateStr, endDateStr);
+
+            if (!flag)
+            {
                 return;
             }
             DateTime startDate = Convert.ToDateTime(startDateStr);
@@ -127,39 +136,18 @@ namespace FABTOOL
             DateTime endDate = new DateTime(endDateT.Year, endDateT.Month, endDateT.Day, 23, 59, 59);
             TimeSpan ts = endDate - startDate;	//计算时间差
             int diff = ts.Days;
+            if (diff <= 0)
+            {
+                MessageBox.Show("结束时间应该大于开始时间");
+                return;
+
+            }
             if (diff > 100 || diff <= 0)
             {
                 MessageBox.Show("时间间隔不允许超过10天");
                 return;
 
             }
-            bool Flag = true;
-
-            // get usbstror info from regedit
-            List<UsbStorInfo> result1 = GetUsbStor(startDate, endDate);
-            if (result1 != null && result1.Count != 0) {
-                Flag = false;
-            }
-
-            // get usb record from event log
-            List< EventRecord > list = ItemCheckedEventArgs(startDate, endDate);
-            if (list != null && list.Count != 0)
-            {
-                Flag = false;
-            }
-
-            // get file modified
-            List<FileInfo> list1 = GetFileModified(startDate, endDate);
-            if (list1 != null && list1.Count != 0) {
-                Flag = false;
-            }
-            string result = "Pass";
-            if (!Flag) {
-                result = "Fail";
-            }
-            textBox3.Text = result;
-
-
             TaskInfo taskInfo = new()
             {
                 CoputerName = Dns.GetHostName(),
@@ -168,28 +156,122 @@ namespace FABTOOL
                 EndTime = endDateStr,
                 Host = userId,
                 Operator = name,
-                Result = result, 
+
 
             };
+           
+            DoScanTask(startDate , endDate , taskInfo);
+            MessageBox.Show("Task Over");
 
-            string directory = taskInfo.CoputerName + taskInfo.TaskTime;            
-            DirectoryInfo di = new System.IO.DirectoryInfo(System.Environment.CurrentDirectory + "/" + directory);            
+        }
+
+
+
+        public void DoScanTask(DateTime startDate , DateTime endDate , TaskInfo taskInfo) {
+            bool Flag = true;
+            string directory = taskInfo.CoputerName + taskInfo.TaskTime;
+            DirectoryInfo di = new System.IO.DirectoryInfo(System.Environment.CurrentDirectory + "/" + directory);
             di.Create();
-
             // 设备信息
             String path = directory + "/result.txt";
-            TaskInfoRecord(path, taskInfo);
+            List<String> dirvers = GetDrivers();
+            int cnt = dirvers.Count;
+            int n = 80 / cnt;
+            List<FileInfo> listFile = new List<FileInfo>();
+            List<UsbStorInfo> result1 = new List<UsbStorInfo>();
+            List<EventRecord> list = new List<EventRecord>();
 
-            // 注册表信息
-            RegeditInfoRecord(path, result1);
+            for (int i = 0; i < 100;) {
+                System.Threading.Thread.Sleep(10);
+                if (i < 1) {
+                    // get usbstror info from regedit
+                    result1 = GetUsbStor(startDate, endDate);
+                    if (result1 != null && result1.Count != 0)
+                    {
+                        Flag = false;
+                    }
+                    i = 5;
 
-            // 日志时间信息
-            EventInfoRecord(path , list);
+                } else
+                if (i == 5) {
+                    // get usb record from event log
+                    list = ItemCheckedEventArgs(startDate, endDate);
+                    if (list != null && list.Count != 0)
+                    {
+                        Flag = false;
+                    }
+                    i = 10;
+                    
+                } else if (i>=10 && i<90) {
+                    for (int j = 0; j < cnt; j++)
+                    {
+                        String driverPath = dirvers[j];
+                        // get file modified
+                        List<FileInfo> list1 = GetFileModified(startDate, endDate, driverPath);
+                        if (list1 != null && list1.Count != 0)
+                        {
+                            Flag = false;
+                            listFile.AddRange(list1);
+                        }
+                        if (j == cnt - 1)
+                        {
+                            i = 90;
+                        }
+                        else
+                        {
+                            i = 10 + j * n;
+                        }
+                        System.Threading.Thread.Sleep(1000);
+                        SetTextMesssage(i, i.ToString() + "\r\n");
 
-            // 文件修改
-            FileModifyRecord(path, list1);
+                    }
+                }
+                
 
-            MessageBox.Show("Task Over");
+                if (i >= 90 && i<92 ) {
+                    string result = "Pass";
+                    if (!Flag)
+                    {
+                        result = "Fail";
+                    }
+                    textBox3.Text = result;
+                    taskInfo.Result = result;
+                    
+                    
+                    TaskInfoRecord(path, taskInfo);
+                    i = 92;
+                }else
+
+                if (i >= 92 && i < 94) {
+                    // 注册表信息
+                    RegeditInfoRecord(path, result1);
+                    i = 94;
+                }else
+
+                if (i >= 94 && i < 96) {
+                    // 日志时间信息
+                    EventInfoRecord(path, list);
+                    i = 96;
+                }else
+
+                if (i >= 96) {
+                    // 文件修改
+                    FileModifyRecord(path, listFile);
+                    i = 100;
+                }
+                SetTextMesssage(i, i.ToString() + "\r\n");
+
+
+            }
+            
+
+            
+
+           
+
+           
+           
+            
         }
 
         public void FileModifyRecord(String path, List<FileInfo> list)
@@ -392,30 +474,28 @@ namespace FABTOOL
             return dirs;
         }
         // get file list where modified between startDate and now
-        private List<FileInfo> GetFileModified(DateTime startDate ,DateTime endDate) {
+        private List<FileInfo> GetFileModified(DateTime startDate ,DateTime endDate,String dirvierPath) {
             List<FileInfo> list = new();
-            List<String> dirvers = GetDrivers();
-
-            string path1111 = @"C:\Users\Admin";
-
-            foreach (string driver in dirvers) {
-                List<string> list2 = GetAllDirectoriesFromPath(driver);
-                foreach (string dir1 in list2)
+            List<string> list2 = GetAllDirectoriesFromPath(dirvierPath);
+            foreach (string dir1 in list2)
+            {
+                if (dir1.Contains("Admin") || dir1.Contains("Windows") || dir1.Contains("Microsoft"))
                 {
-                    var directory = new DirectoryInfo(dir1);
-                    try
+                    continue;
+                }
+                var directory = new DirectoryInfo(dir1);
+                try
+                {
+                    var files = directory.GetFiles()
+                  .Where(file => file.LastWriteTime >= startDate && file.LastWriteTime <= endDate);
+                    foreach (var file in files)
                     {
-                        var files = directory.GetFiles()
-                      .Where(file => file.LastWriteTime >= startDate && file.LastWriteTime <= endDate);
-                        foreach (var file in files)
-                        {
-                            list.Add(file);
-                        }
+                        list.Add(file);
                     }
-                    catch (Exception e) { 
-                    
-                    }
- 
+                }
+                catch (Exception e)
+                {
+
                 }
 
             }
@@ -465,6 +545,63 @@ namespace FABTOOL
         {
             
 
+        }
+
+        private void backgroundWorker1_DoWork(object sender, System.ComponentModel.DoWorkEventArgs e)
+        {
+            BackgroundWorker worker = sender as BackgroundWorker;
+            for (int i = 0; i < 100; i++)
+            {
+                Thread.Sleep(100);
+                worker.ReportProgress(i);
+                if (worker.CancellationPending)
+                {  // 如果用户取消则跳出处理数据代码 
+                    e.Cancel = true;
+                    break;
+                }
+            }
+        }
+
+       
+
+        private void button2_Click(object sender, EventArgs e)
+        {
+            this.backgroundWorker1.RunWorkerAsync(); // 运行 backgroundWorker 组件
+            Form2 form = new Form2(this.backgroundWorker1);// 显示进度条窗体
+            form.ShowDialog(this);
+            form.Close();
+        }
+
+        private delegate void SetPos(int ipos, string vinfo);//代理
+
+        private void button3_Click(object sender, EventArgs e)
+        {
+            Thread fThread = new Thread(new ThreadStart(SleepT));
+            fThread.Start();
+        }
+
+        private void SetTextMesssage(int ipos, string vinfo)
+        {
+            if (this.InvokeRequired)
+            {
+                SetPos setpos = new SetPos(SetTextMesssage);
+                this.Invoke(setpos, new object[] { ipos, vinfo });
+            }
+            else
+            {
+                this.label4.Text = ipos.ToString() + "/1000";
+                this.progressBar1.Value = Convert.ToInt32(ipos);
+                this.textBox4.AppendText(vinfo);
+            }
+        }
+
+        private void SleepT()
+        {
+            for (int i = 0; i < 500; i++)
+            {
+                System.Threading.Thread.Sleep(10);
+                SetTextMesssage(100 * i / 500, i.ToString() + "\r\n");
+            }
         }
     }
 }
