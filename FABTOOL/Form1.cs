@@ -591,7 +591,30 @@ namespace FABTOOL
             {
                 this.label4.Text = ipos.ToString() + "/1000";
                 this.progressBar1.Value = Convert.ToInt32(ipos);
-                this.textBox4.AppendText(vinfo);
+                this.richTextBox1.AppendText(vinfo);
+            }
+        }
+        private delegate void delInfoList(string text);
+
+        private void SetrichTextBox(string value)
+        {
+
+            if (richTextBox1.InvokeRequired)//其它线程调用
+            {
+                delInfoList d = new delInfoList(SetrichTextBox);
+                richTextBox1.Invoke(d, value);
+            }
+            else//本线程调用
+            {
+                if (richTextBox1.Lines.Length > 100)
+                {
+                    richTextBox1.Clear();
+                }
+
+                richTextBox1.Focus(); //让文本框获取焦点 
+                richTextBox1.Select(richTextBox1.TextLength, 0);//设置光标的位置到文本尾
+                richTextBox1.ScrollToCaret();//滚动到控件光标处 
+                richTextBox1.AppendText(value);//添加内容
             }
         }
 
@@ -602,6 +625,53 @@ namespace FABTOOL
                 System.Threading.Thread.Sleep(10);
                 SetTextMesssage(100 * i / 500, i.ToString() + "\r\n");
             }
+        }
+
+        private void button4_Click(object sender, EventArgs e)
+        {
+            thread = new Thread(Runtime);
+            thread.Start();
+        }
+
+        Thread thread;
+        ManualResetEvent ma;
+        bool on_off = false;
+        bool stop = false;
+       
+        void Runtime()
+        {
+            for (int i = 1; i <= 100; i++)
+            {
+                if (stop)
+                    return;
+                if (on_off)
+                {
+                    ma = new ManualResetEvent(false);
+                    ma.WaitOne();
+                }
+                SetrichTextBox("计时 :" + i + "\r\n");
+                Thread.Sleep(100);
+            }
+      
+    }
+
+        private void button5_Click(object sender, EventArgs e)
+        {
+            on_off = true;
+            SetrichTextBox("暂停中 :\r\n");
+        }
+
+        private void button6_Click(object sender, EventArgs e)
+        {
+            on_off = false;
+            ma.Set();
+            SetrichTextBox("继续计时 :\r\n");
+        }
+
+        private void button7_Click(object sender, EventArgs e)
+        {
+            stop = true;
+            SetrichTextBox("停止计时 \r\n");
         }
     }
 }
