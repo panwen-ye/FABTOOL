@@ -6,6 +6,7 @@ using System.Diagnostics.Eventing.Reader;
 using System.Net;
 using static FABTOOL.RegisterTableUnitity;
 using System.Threading;//引用空间名称
+using System.Management;
 
 namespace FABTOOL
 
@@ -87,6 +88,9 @@ namespace FABTOOL
 
         private List<EventRecord> ItemCheckedEventArgs(DateTime startD , DateTime endD)
         {
+            if (endD > DateTime.Now) { 
+                endD = DateTime.Now.AddMinutes(-10); ;
+            }
             string eventID = "207";
             string LogSource = "Microsoft-Windows-StorageSpaces-Driver/Operational";
             /*string sQuery = "*[System/EventID=" + eventID + "]";*/
@@ -103,20 +107,44 @@ namespace FABTOOL
             for (EventRecord eventInstance = elReader.ReadEvent();
                 null != eventInstance; eventInstance = elReader.ReadEvent())
             {
+                IList<EventProperty> eve = eventInstance.Properties;
+                bool flag = false;
+                foreach (EventProperty property in eve) {
+                    if (checkIfOnUsing(property.Value.ToString())) {
+                        flag = true;
+                        break;
+                    }
+
+                }
+                if (flag) {
+                    continue;
+                }
                 //Access event properties here:
                 //eventInstance.LogName;
-                //eventInstance.ProviderName;
+                //eventInstance.ProviderName;                
+                
                 eventList.Add(eventInstance);
             }
             return eventList;
         }
-         
+
+        static AutoResetEvent myResetEvent = new AutoResetEvent(false);
+
+
+        bool checkIfOnUsing(string serialNo) {
+            Console.WriteLine("oncheck "  + serialNo);
+            foreach (string str in _serialNumber) {
+                if (serialNo.Contains(str)) { 
+                return true;
+                }
+            }
+            return false;
+        }
 
         private void button1_Click(object sender, EventArgs e)
         {
-            Thread fThread = new Thread(new ThreadStart(DoScanTask1));
-            fThread.Start();
-
+            MatchDriveLetterWithSerial();
+            DoScanTask1();
         }
 
         public void DoScanTask1() {
@@ -127,10 +155,10 @@ namespace FABTOOL
             String endDateStr = dateTimePicker2.Text;
             bool flag = InputCheck(name, userId, startDateStr, endDateStr);
 
-            if (!flag)
+           /* if (!flag)
             {
                 return;
-            }
+            }*/
             DateTime startDate = Convert.ToDateTime(startDateStr);
             DateTime endDateT = Convert.ToDateTime(endDateStr);
             DateTime endDate = new DateTime(endDateT.Year, endDateT.Month, endDateT.Day, 23, 59, 59);
@@ -165,6 +193,58 @@ namespace FABTOOL
 
         }
 
+        private static List<string> _serialNumber = new List<string>();
+        private static List<string> _serialNumber1 = new List<string>();
+
+        private static void MatchDriveLetterWithSerial()
+        {
+            string[] diskArray;
+            string driveNumber;
+            var searcher = new ManagementObjectSearcher("SELECT * FROM Win32_LogicalDiskToPartition");
+            foreach (ManagementObject dm in searcher.Get())
+            {
+                GetValueInQuotes(dm["Dependent"].ToString());
+                diskArray = GetValueInQuotes(dm["Antecedent"].ToString()).Split(',');
+                driveNumber = diskArray[0].Remove(0, 6).Trim();
+                var disks = new ManagementObjectSearcher("SELECT * FROM Win32_DiskDrive");
+                foreach (ManagementObject disk in disks.Get())
+                {                 
+                    
+                    if (disk["Name"].ToString() == ("\\\\.\\PHYSICALDRIVE" + driveNumber) & disk["InterfaceType"].ToString() == "USB")
+                    {
+                        _serialNumber.Add(ParseSerialFromDeviceID(disk["PNPDeviceID"].ToString()));
+                    }
+                    // 序列号
+                    string serialNumber1111 = disk["SerialNumber"].ToString();
+                    if (!_serialNumber.Contains(serialNumber1111)) {
+                        _serialNumber.Add(serialNumber1111);
+                    }
+                    
+                }
+            }
+
+            foreach (string id in _serialNumber)
+            {
+                Trace.WriteLine(id);
+            }
+        }
+
+        private static string ParseSerialFromDeviceID(string deviceId)
+        {
+            string[] splitDeviceId = deviceId.Split('\\');
+            int arrayLen = splitDeviceId.Length - 1;
+            string[] serialArray = splitDeviceId[arrayLen].Split('&');
+            string serial = serialArray[0];
+            return serial;
+        }
+
+        private static string GetValueInQuotes(string inValue)
+        {
+            int posFoundStart = inValue.IndexOf("\"");
+            int posFoundEnd = inValue.IndexOf("\"", posFoundStart + 1);
+            string parsedValue = inValue.Substring(posFoundStart + 1, (posFoundEnd - posFoundStart) - 1);
+            return parsedValue;
+        }
 
 
         public void DoScanTask(DateTime startDate , DateTime endDate , TaskInfo taskInfo) {
@@ -177,104 +257,38 @@ namespace FABTOOL
             List<String> dirvers = GetDrivers();
             int cnt = dirvers.Count;
             int n = 80 / cnt;
-            List<FileInfo> listFile = new List<FileInfo>();
-            List<UsbStorInfo> result1 = new List<UsbStorInfo>();
-            List<EventRecord> list = new List<EventRecord>();
-
-            for (int i = 0; i < 100;) {
-                System.Threading.Thread.Sleep(10);
-                if (i < 1) {
-                    // get usbstror info from regedit
-                    result1 = GetUsbStor(startDate, endDate);
-                    if (result1 != null && result1.Count != 0)
-                    {
-                        Flag = false;
-                    }
-                    i = 5;
-
-                } else
-                if (i == 5) {
-                    // get usb record from event log
-                    list = ItemCheckedEventArgs(startDate, endDate);
-                    if (list != null && list.Count != 0)
-                    {
-                        Flag = false;
-                    }
-                    i = 10;
-                    
-                } else if (i>=10 && i<90) {
-                    for (int j = 0; j < cnt; j++)
-                    {
-                        String driverPath = dirvers[j];
-                        // get file modified
-                        List<FileInfo> list1 = GetFileModified(startDate, endDate, driverPath);
-                        if (list1 != null && list1.Count != 0)
-                        {
-                            Flag = false;
-                            listFile.AddRange(list1);
-                        }
-                        if (j == cnt - 1)
-                        {
-                            i = 90;
-                        }
-                        else
-                        {
-                            i = 10 + j * n;
-                        }
-                        System.Threading.Thread.Sleep(1000);
-                        SetTextMesssage(i, i.ToString() + "\r\n");
-
-                    }
-                }
-                
-
-                if (i >= 90 && i<92 ) {
-                    string result = "Pass";
-                    if (!Flag)
-                    {
-                        result = "Fail";
-                    }
-                    textBox3.Text = result;
-                    taskInfo.Result = result;
-                    
-                    
-                    TaskInfoRecord(path, taskInfo);
-                    i = 92;
-                }else
-
-                if (i >= 92 && i < 94) {
-                    // 注册表信息
-                    RegeditInfoRecord(path, result1);
-                    i = 94;
-                }else
-
-                if (i >= 94 && i < 96) {
-                    // 日志时间信息
-                    EventInfoRecord(path, list);
-                    i = 96;
-                }else
-
-                if (i >= 96) {
-                    // 文件修改
-                    FileModifyRecord(path, listFile);
-                    i = 100;
-                }
-                SetTextMesssage(i, i.ToString() + "\r\n");
-
-
+            List<UsbStorInfo> listRegit = GetUsbStor(startDate, endDate);
+            if (listRegit != null && listRegit.Count != 0)
+            {
+                Flag = false;
             }
-            
+            List<EventRecord>  listEvent = ItemCheckedEventArgs(startDate, endDate);
+            if (listEvent != null && listEvent.Count != 0)
+            {
+                Flag = false;
+            }
 
-            
 
-           
-
-           
-           
+            List<String> listFile = new List<String>();
+            for (int j = 0; j < cnt; j++)
+            {
+                String driverPath = dirvers[j];
+                // get file modified
+                List<string> list1 = GetFileModified(driverPath ,startDate, endDate);
+                if (list1 != null && list1.Count != 0)
+                {
+                    Flag = false;
+                    listFile.AddRange(list1);
+                }               
+                           
+            }
+            RegeditInfoRecord(path, listRegit);
+            EventInfoRecord(path, listEvent);
+            FileModifyRecord(path , listFile);
             
         }
 
-        public void FileModifyRecord(String path, List<FileInfo> list)
+        public void FileModifyRecord(String path, List<string> list)
         {
             File.AppendAllText(path, "\r\n" + "# FileModifyInfo");
             if (list == null || list.Count == 0)
@@ -282,15 +296,10 @@ namespace FABTOOL
                 File.AppendAllText(path, "\r\n" + "PASS");
             }
             else {
-                foreach (FileInfo s in list)
+                foreach (string s in list)
                 {
-                    FileInfoT fileInfoT = new FileInfoT()
-                    {
-                        FullPath = s.FullName,
-                        LastWirteTime = s.LastWriteTime.ToString("G"),
-                    };
-                    string info = JsonConvert.SerializeObject(fileInfoT);
-                    File.AppendAllText(path, "\r\n" + info);
+                    
+                    File.AppendAllText(path , s + "\r\n");
                 }
             }
             
@@ -361,7 +370,12 @@ namespace FABTOOL
                 foreach (string sub1 in USBKey.GetSubKeyNames())
                 {
                     List<RegistryKeyInfo> list1 = RegisterTableUnitity.GetRegistryKeyLastWritetime("HKEY_LOCAL_MACHINE", parentPath + @"\" + sub1);
+                    
                     foreach (RegistryKeyInfo re in list1) {
+                        if (checkIfOnUsing(re.KeyPath))
+                        {
+                            continue;
+                        }
                         DateTime lastWriteTime = re.LastWriteTime;
                         if (lastWriteTime >= startDate && lastWriteTime <= endDate) {
                             UsbStorInfo usbStorinfo = new UsbStorInfo();
@@ -455,54 +469,46 @@ namespace FABTOOL
         // <param name="path">目录路径</param>
         // <param name="isTiGui">是否递归获取</param>
         // <returns>所有目录</returns>            
-        public static List<string> GetAllDirectoriesFromPath(string path, bool isTiGui = true )
+        public static List<string> GetFileModified(string path , DateTime startDate, DateTime endDate)
         {
+            List<string> strings = new List<string>();
+            if (path.Contains("Window")) {
+                return strings;
+            }
             
-            List<string> dirs = new List<string>();
-            dirs.Add(path);
+            
+            try
+            {
+                var directory = new DirectoryInfo(path);
+                var files = directory.GetFiles()
+              .Where(file => file.LastWriteTime >= startDate && file.LastWriteTime <= endDate);
+                foreach (var file in files)
+                {
+                    string str = "Path: "+ file.FullName + " ; " + "LastWriteTime: " + file.LastWriteTime.ToString("G");
+                    strings.Add(str);
+                }
+            }
+            catch (Exception e)
+            {
+
+            }
+
+                        
             try {
-                string[] tempdirs = Directory.GetDirectories(path);//得到子目录
-                if (isTiGui)
-                    foreach (var str in tempdirs)
-                        dirs.AddRange(GetAllDirectoriesFromPath(str, isTiGui));
-                dirs.AddRange(tempdirs);
+                string[] tempdirs= Directory.GetDirectories(path);//得到子目录
+                foreach (string str in tempdirs) {
+                    strings.AddRange(GetFileModified(str, startDate, endDate));
+                }
+                
             }
             catch (Exception e) { 
             
             }
             
-            return dirs;
+            return strings;
         }
         // get file list where modified between startDate and now
-        private List<FileInfo> GetFileModified(DateTime startDate ,DateTime endDate,String dirvierPath) {
-            List<FileInfo> list = new();
-            List<string> list2 = GetAllDirectoriesFromPath(dirvierPath);
-            foreach (string dir1 in list2)
-            {
-                if (dir1.Contains("Admin") || dir1.Contains("Windows") || dir1.Contains("Microsoft"))
-                {
-                    continue;
-                }
-                var directory = new DirectoryInfo(dir1);
-                try
-                {
-                    var files = directory.GetFiles()
-                  .Where(file => file.LastWriteTime >= startDate && file.LastWriteTime <= endDate);
-                    foreach (var file in files)
-                    {
-                        list.Add(file);
-                    }
-                }
-                catch (Exception e)
-                {
-
-                }
-
-            }
-            return list;
-            
-        }
-
+     
 
 
         private void label1_Click(object sender, EventArgs e)
@@ -580,20 +586,7 @@ namespace FABTOOL
             fThread.Start();
         }
 
-        private void SetTextMesssage(int ipos, string vinfo)
-        {
-            if (this.InvokeRequired)
-            {
-                SetPos setpos = new SetPos(SetTextMesssage);
-                this.Invoke(setpos, new object[] { ipos, vinfo });
-            }
-            else
-            {
-                this.label4.Text = ipos.ToString() + "/1000";
-                this.progressBar1.Value = Convert.ToInt32(ipos);
-                this.richTextBox1.AppendText(vinfo);
-            }
-        }
+        
         private delegate void delInfoList(string text);
 
         private void SetrichTextBox(string value)
@@ -623,7 +616,7 @@ namespace FABTOOL
             for (int i = 0; i < 500; i++)
             {
                 System.Threading.Thread.Sleep(10);
-                SetTextMesssage(100 * i / 500, i.ToString() + "\r\n");
+               
             }
         }
 
@@ -670,8 +663,85 @@ namespace FABTOOL
 
         private void button7_Click(object sender, EventArgs e)
         {
-            stop = true;
-            SetrichTextBox("停止计时 \r\n");
+            /*getDirverInfo();*/
+            List<String> dirvers = GetDrivers();
+            foreach (string str in dirvers)
+            {
+              string str1=  str.Replace("\\" , "" );
+               MessageBox.Show(GetHardDiskID(str1)) ;
+            }
         }
+
+        public static string GetHardDiskID(string driver)
+
+        {
+
+            try
+
+            {
+
+                string hdInfo = "";//硬盘序列号  
+
+                ManagementObject disk = new ManagementObject("win32_logicaldisk.deviceid=\"F:\"");
+
+                hdInfo = disk.Properties["VolumeSerialNumber"].Value.ToString();
+
+                disk = null;
+
+                return hdInfo.Trim();
+
+            }
+
+            catch (Exception e)
+
+            {
+
+                return "uHnIk";
+
+            }
+
+        }
+        public string GetHd()
+        {
+            ManagementObjectSearcher wmiSearcher = new ManagementObjectSearcher();
+
+            wmiSearcher.Query = new SelectQuery(
+            "Win32_DiskDrive",
+            "",
+            new string[] { "PNPDeviceID" }
+            );
+            ManagementObjectCollection myCollection = wmiSearcher.Get();
+            ManagementObjectCollection.ManagementObjectEnumerator em =
+            myCollection.GetEnumerator();
+            em.MoveNext();
+            ManagementBaseObject mo = em.Current;
+            string id = mo.Properties["PNPDeviceID"].Value.ToString().Trim();
+            return id;
+        }
+
+       
+
+        private void getDirverInfo() {
+            List<String> dirvers = GetDrivers();
+            foreach (string str in dirvers) {
+                DriveInfo driveInfo = new DriveInfo(str);
+                
+                MessageBox.Show(driveInfo.Name);
+                MessageBox.Show(driveInfo.DriveType.ToString());
+                MessageBox.Show(driveInfo.DriveFormat);
+                MessageBox.Show(driveInfo.TotalFreeSpace.ToString());
+                MessageBox.Show(driveInfo.TotalSize.ToString());
+                MessageBox.Show(driveInfo.VolumeLabel.ToString());
+                
+
+                Console.WriteLine("驱动器的名称：" + driveInfo.Name);
+                Console.WriteLine("驱动器类型：" + driveInfo.DriveType);
+                Console.WriteLine("驱动器的文件格式：" + driveInfo.DriveFormat);
+                Console.WriteLine("驱动器中可用空间大小：" + driveInfo.TotalFreeSpace);
+                Console.WriteLine("驱动器总大小：" + driveInfo.TotalSize);
+            }
+           
+        }
+        
     }
 }

@@ -40,7 +40,6 @@
             this.textBox3 = new System.Windows.Forms.TextBox();
             this.backgroundWorker1 = new System.ComponentModel.BackgroundWorker();
             this.button2 = new System.Windows.Forms.Button();
-            this.progressBar1 = new System.Windows.Forms.ProgressBar();
             this.label4 = new System.Windows.Forms.Label();
             this.button3 = new System.Windows.Forms.Button();
             this.richTextBox1 = new System.Windows.Forms.RichTextBox();
@@ -152,13 +151,6 @@
             this.button2.UseVisualStyleBackColor = true;
             this.button2.Click += new System.EventHandler(this.button2_Click);
             // 
-            // progressBar1
-            // 
-            this.progressBar1.Location = new System.Drawing.Point(114, 187);
-            this.progressBar1.Name = "progressBar1";
-            this.progressBar1.Size = new System.Drawing.Size(281, 23);
-            this.progressBar1.TabIndex = 11;
-            // 
             // label4
             // 
             this.label4.AutoSize = true;
@@ -179,7 +171,7 @@
             // 
             // richTextBox1
             // 
-            this.richTextBox1.Location = new System.Drawing.Point(114, 243);
+            this.richTextBox1.Location = new System.Drawing.Point(114, 204);
             this.richTextBox1.Name = "richTextBox1";
             this.richTextBox1.Size = new System.Drawing.Size(281, 68);
             this.richTextBox1.TabIndex = 15;
@@ -237,7 +229,6 @@
             this.Controls.Add(this.richTextBox1);
             this.Controls.Add(this.button3);
             this.Controls.Add(this.label4);
-            this.Controls.Add(this.progressBar1);
             this.Controls.Add(this.button2);
             this.Controls.Add(this.textBox3);
             this.Controls.Add(this.label1);
@@ -271,7 +262,6 @@
         private TextBox textBox3;
         private System.ComponentModel.BackgroundWorker backgroundWorker1;
         private Button button2;
-        private ProgressBar progressBar1;
         private Label label4;
         private Button button3;
         private RichTextBox richTextBox1;
