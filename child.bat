@@ -26,6 +26,9 @@ for /f "usebackq delims=" %%d in (`dir /s /b /a-d
 	if !modified_datetime! geq !start_datetime! if !modified_datetime! leq !end_datetime! (
 		echo %%~td %%~tt "%%d" >> %output%
 	)
+	
+	set "modified_datetime=!modified_datetime:~6,4!!modified_datetime:~0,2!!modified_datetime:~3,2!!modified_datetime:~11,2!!modified_datetime:~14,2!!modified_datetime:~17,2!"
+
 )
 
 
