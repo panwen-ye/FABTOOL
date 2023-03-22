@@ -1,12 +1,18 @@
 @echo off
 setlocal enabledelayedexpansion
-echo "%CD:~0,2%"
-echo "%SystemDrive%"
-if not "%CD:~0,2%"=="%SystemDrive%" (
-    echo "Please execute the script on a local drive."
-    exit /B
-)
 
+REM 获取当前目录的卷标
+for /f "tokens=2 delims=:" %%i in ('vol %cd%') do set label=%%i
+
+REM 检查卷标是否为 "mount"，如果是，则表示当前目录为挂载目录
+if "%label%"==" mount" (
+    echo 当前脚本无法在挂载目录下执行。
+    pause
+    exit /b
+) else (
+    echo 当前目录不是挂载目录，可以执行脚本。
+)
+pause
 
 set "start_datetime=20230115000000"
 set "end_datetime=20230318235959"
