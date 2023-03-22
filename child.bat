@@ -22,11 +22,13 @@ for /f "usebackq delims=" %%d in (`dir /s /b /a-d
 	set "modified_datetime=%%~td%%~zd"
 	set "modified_datetime=!modified_datetime:/=!"
 	set "modified_datetime=!modified_datetime::=!"
-	
+	set "modified_datetime=!modified_datetime:~0,8!!modified_datetime:~9,6!"
 	if !modified_datetime! geq !start_datetime! if !modified_datetime! leq !end_datetime! (
 		echo %%~td %%~tt "%%d" >> %output%
 	)
 )
+
+
 
 echo %date% %time% scan  %drive% finish >> %output%
 
