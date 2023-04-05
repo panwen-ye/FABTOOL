@@ -109,3 +109,21 @@ rem 扫描结果写入txt
 echo " result.txt finish"
 echo "delete tmp txt..."
 del *_temp.txt
+
+
+
+set fail=0
+for /f "tokens=*" %%a in (!dir_name!\result.txt) do (	
+    set line=%%a
+    if "!line:Modified=!" NEQ "!line!" (
+        set fail=1
+    )
+)
+
+if %fail% == 1 (
+    echo fail
+) else (
+    echo pass
+)
+
+pause
