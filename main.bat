@@ -1,24 +1,53 @@
 @echo off
 setlocal enabledelayedexpansion
-
-REM 获取当前目录的卷标
-for /f "tokens=2 delims=:" %%i in ('vol %cd%') do set label=%%i
-
-REM 检查卷标是否为 "mount"，如果是，则表示当前目录为挂载目录
-if "%label%"==" mount" (
-    echo 当前脚本无法在挂载目录下执行。
-    pause
-    exit /b
-) else (
-    echo 当前目录不是挂载目录，可以执行脚本。
+echo "%CD:~0,2%"
+echo "%SystemDrive%"
+if not "%CD:~0,2%"=="%SystemDrive%" (
+    echo "Please execute the script on a local drive."
+    exit /B
 )
-pause
 
-set "start_datetime=20230115000000"
-set "end_datetime=20230318235959"
+set "dir_name_t=%COMPUTERNAME%_1"
+REM 检查目录是否存在
+set "start_datetime=" 
+set "end_datetime=!date:~0,4!!date:~5,2!!date:~8,2!!time:~0,2!!time:~3,2!!time:~6,2!"
+if not exist "!dir_name_t!\startTime.txt" (
+	echo  This is the first scan, and the current time will be recorded
+
+	md "!dir_name!" >nul 2>&1
+	if %errorlevel% neq 0 (
+		echo The current directory does not have read and write permissions, please copy the script to the computer for local execution, and copy the output results to a USB flash drive。
+		pause
+		exit
+	)
+	echo !date:~0,4!!date:~5,2!!date:~8,2!!time:~0,2!!time:~3,2!!time:~6,2! >> "startTime.txt"
+    
+) else (
+    echo This is the second scan, and the first time is as follows:
+	echo 22 
+	 
+	
+	REM 读取文本文件内容并赋值给外部变量
+	for /F "usebackq delims=" %%A in ("!dir_name_t!\startTime.txt") do (
+		set "start_datetime=%%A"		
+	)
+	
+	echo "start date: !start_datetime!"
+
+	
+)
+
+
+
+
+
+set "dir_name=%COMPUTERNAME%_!date:~5,2!!date:~8,2!!time:~0,2!!time:~3,2!!time:~6,2!"
+echo "!dir_name!"
+md "!dir_name!" 
+
 
 set "excluded_folders=C:\Windows;C:\Program Files;C:\Program Files (x86)"
-set "excluded_drives=C:"
+set "excluded_drives=C:,D:"
 
 echo "scan start , wait..."
 echo "start date: %start_datetime%"
@@ -29,7 +58,6 @@ rem 免扫描盘
 echo "skip drivers:%excluded_drives%"
 
 set result=pass
-
 REM 获取系统语言
 for /f "tokens=3 delims=: " %%a in ('reg query "HKCU\Control Panel\International" /v "sLanguage"') do set lang=%%a
 
@@ -46,8 +74,6 @@ if %lang%==409 (
 )
 
 
-set "dir_name=%COMPUTERNAME%_!date:~5,2!!date:~8,2!!time:~0,2!!time:~3,2!!time:~6,2!"
-echo "!dir_name!"
 
 echo "get local drivers..."
 for /f "skip=1 tokens=1,2" %%a in ('wmic logicaldisk get deviceid^,drivetype') do (
@@ -88,7 +114,7 @@ echo Total number of child command prompt processes running: %process_count%
 
 
 if %process_count% GTR 0 (
-    timeout /t 30 /nobreak > nul
+    timeout /t 10 /nobreak > nul
 	echo "scan task is running"
     goto check_process
 )
@@ -97,8 +123,7 @@ echo "all scan process finish"
 echo "Start reading the output of child.bat and write into result.txt"
 
 
-rem 创建结果存放目录
-md "!dir_name!"
+
 rem 扫描结果写入txt
 (for %%f in (*.txt) do (
     echo "driver:%%~nf"
@@ -109,8 +134,7 @@ rem 扫描结果写入txt
 echo " result.txt finish"
 echo "delete tmp txt..."
 del *_temp.txt
-
-
+echo  "!dir_name!\result.txt"
 
 set fail=0
 for /f "tokens=*" %%a in (!dir_name!\result.txt) do (	
