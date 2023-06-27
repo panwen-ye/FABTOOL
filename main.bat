@@ -7,21 +7,31 @@ if not "%CD:~0,2%"=="%SystemDrive%" (
     exit /B
 )
 
+REM 获取当前日期
+for /F "tokens=2 delims==" %%G in ('wmic OS Get localdatetime /value') do set "datetime=%%G"
+set "date=!datetime:~0,4!/!datetime:~4,2!/!datetime:~6,2!"
+
+REM 获取当前时间
+set "time=%TIME:~0,8%"
+set "current_time=!date! !time!"
 set "dir_name_t=%COMPUTERNAME%_1"
 REM 检查目录是否存在
 set "start_datetime=" 
-set "end_datetime=!date:~0,4!!date:~5,2!!date:~8,2!!time:~0,2!!time:~3,2!!time:~6,2!"
+
 if not exist "!dir_name_t!\startTime.txt" (
 	echo  This is the first scan, and the current time will be recorded
-
-	md "!dir_name!" >nul 2>&1
+	
+	md "!dir_name_t!" >nul 2>&1
 	if %errorlevel% neq 0 (
 		echo The current directory does not have read and write permissions, please copy the script to the computer for local execution, and copy the output results to a USB flash drive。
 		pause
 		exit
 	)
-	echo !date:~0,4!!date:~5,2!!date:~8,2!!time:~0,2!!time:~3,2!!time:~6,2! >> "startTime.txt"
-    
+	
+
+	echo !current_time! >> "!dir_name_t!/startTime.txt"
+	pause
+    exit
 ) else (
     echo This is the second scan, and the first time is as follows:
 	echo 22 
@@ -44,6 +54,8 @@ if not exist "!dir_name_t!\startTime.txt" (
 set "dir_name=%COMPUTERNAME%_!date:~5,2!!date:~8,2!!time:~0,2!!time:~3,2!!time:~6,2!"
 echo "!dir_name!"
 md "!dir_name!" 
+
+set "end_datetime=!current_time!"
 
 
 set "excluded_folders=C:\Windows;C:\Program Files;C:\Program Files (x86)"
@@ -134,6 +146,7 @@ rem 扫描结果写入txt
 echo " result.txt finish"
 echo "delete tmp txt..."
 del *_temp.txt
+rd /S /Q "!dir_name_t!"
 echo  "!dir_name!\result.txt"
 
 set fail=0
